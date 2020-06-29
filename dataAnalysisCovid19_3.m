@@ -5,10 +5,210 @@ datapath = '/Users/loued/Documents/CovidResults'
 
 cd(datapath)
 
+
+cmr_data = readtable('owid-covid-data.xlsx');
+cmr_data.date = datetime(cmr_data.date,'ConvertFrom','excel');
+cmr_data.date.Year = 2020;
+
+for i = 1:length(cmr_data.date)
+rightDate(i) = strcmp(char(cmr_data.date(i)), '24-Jun-2020 00:00:00');
+end
+
+cmr_data = cmr_data(rightDate, :);
+country = cmr_data.location;
+cmr = (cmr_data.total_deaths./cmr_data.population) * 100;
+cmr_Nat = [country num2cell(cmr)];
+
 prelimRes = readtable('results-survey499135.xlsx');
 me = {};
 loved = {};
 other = {};
+
+
+QC = [prelimRes.Att1_Test_7_3_ prelimRes.Att2_Test_5_2_ prelimRes.Att3_Test_10_4_ prelimRes.Test4_3_4_];
+test = zeros([size(QC)]);
+check = zeros([size(QC)]);
+corr = [2 3 2 3];
+for i = 1:length(QC(:,1))
+    if strcmp(QC{i,1}, 'Yes')
+        test(i,1) =2;
+        check(i,1) = 1;
+    elseif strcmp(QC{i,1}, 'No')
+        test(i,1) =3;
+        check(i,1) = 0;
+    end
+end
+
+for i = 1:length(QC(:,2))
+    if strcmp(QC{i,2}, 'Yes')
+        test(i,2) =2;
+        check(i,2) = 0;
+    elseif strcmp(QC{i,2}, 'No')
+        test(i,2) =3;
+        check(i,2) = 1;
+    end
+end
+
+for i = 1:length(QC(:,3))
+    if strcmp(QC{i,3}, 'Yes')
+        test(i,3) =2;
+        check(i,3) = 1;
+    elseif strcmp(QC{i,3}, 'No')
+        test(i,3) =3;
+        check(i,3) = 0;
+    end
+end
+
+for i = 1:length(QC(:,4))
+    if strcmp(QC{i,4}, 'Yes')
+        test(i,4) =2;
+        check(i,4) = 0;
+    elseif strcmp(QC{i,4}, 'No')
+        test(i,4) =3;
+        check(i,4) = 1;
+    end
+end
+    
+for i = 1:length(check)
+    score(i) = sum(check(i,:));  
+end
+
+rem = find(score >= 3)';
+prelimRes = prelimRes(rem, :);
+
+for i =1:height(prelimRes)
+    if strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'Scotland') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'United kingdom') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'Wales') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'United kingdom') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'England')
+        prelimRes.Residence_WhatIsYourCountryOfResidence_(i) = {'United Kingdom'};
+    elseif strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'Italia') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'italia') || strcmp(prelimRes.Residence_WhatIsYourCountryOfResidence_(i), 'italy') 
+        prelimRes.Residence_WhatIsYourCountryOfResidence_(i) = {'United Kingdom'};
+    end
+end
+
+
+prelimRes.Properties.VariableNames(109:114) = {'respSelf' 'respLoved' 'respOther' 'otherSelfResp' 'govSelfResp' 'govResp'};
+dutyVar = prelimRes(:, 109:114);
+prelimRes.Properties.VariableNames(97:105) = {'journalist' 'locGovt' 'natGovt' 'doc' 'virologists' 'economist' 'psych' 'epidem' 'statist'};
+trustVar = prelimRes(:, 97:105);
+
+persLoss = table(prelimRes.Covid19MonLoss_EstimateHowMuch_InMonetaryTerms_HasCovid19CostYo, 'VariableNames', {'persLoss'});
+compliance = table(prelimRes.compliance_SQ001__HowWellDoPeopleInYourCommunityFollowRules__0_, 'VariableNames', {'compliance'});
+
+percRiskCFRS = table(prelimRes.RiskSelfCovid19_WhatIsYourEstimatedRiskOfDyingFromCovid19_useAP, 'VariableNames', {'percRiskCFRS'});
+percRiskCFRL = table(prelimRes.RiskCotherCovid19_WhatIsYourLovedOne_sEstimatedRiskOfDyingFromC, 'VariableNames', {'percRiskCFRL'});
+percRiskCFRO = table(prelimRes.RiskDotherCovid19_WhatIsTheEstimatedRiskOfDyingFromCovid19_useA, 'VariableNames', {'percRiskCFRO'});
+
+
+
+for i = 1:height(percRiskCFRS)
+    idx= find(strcmp(cmr_Nat(:,1), char(prelimRes.Residence_WhatIsYourCountryOfResidence_(i))));
+    if ~isempty(idx)
+    disp(cmr_Nat(idx,1))
+    realCMR(i) = cmr_Nat(idx,2);
+    else
+    realCMR(i) = {0.3};
+    end
+end
+    
+realCMR = table(realCMR', 'VariableNames', {'realCMRG'});
+for i =1:height(realCMR)
+    if prelimRes.cOtherAge_HowOldIsYourLovedOne_(i) > 65 
+        realCMRL(i) = cell2mat(realCMR(i,1).realCMRG) * 3;
+    elseif strcmp(prelimRes.cOtherHCond_DoesYourLovedOneHaveAHealthCondition_(i), 'Yes')
+        realCMRL(i) = cell2mat(realCMR(i,1).realCMRG) * 2;
+    elseif strcmp(prelimRes.cOtherHCond_DoesYourLovedOneHaveAHealthCondition_(i), 'Yes') && prelimRes.cOtherAge_HowOldIsYourLovedOne_(i) > 65 
+        realCMRL(i) = cell2mat(realCMRG(i,1).realCMRG) * 6;
+    else
+        realCMRL(i) = cell2mat(realCMR(i,1).realCMRG);
+    end
+end
+
+for i =1:height(realCMR)
+    if prelimRes.Age_HowOldAreYou_(i) > 65 
+        realCMRS(i) = cell2mat(realCMR(i,1).realCMRG) * 3;
+    elseif strcmp(prelimRes.PHealth_DoYouHaveAHealthCondition_(i), 'Yes')
+        realCMRS(i) = cell2mat(realCMR(i,1).realCMRG) * 2;
+    elseif strcmp(prelimRes.PHealth_DoYouHaveAHealthCondition_(i), 'Yes') && prelimRes.Age_HowOldAreYou_(i) > 65 
+        realCMRS(i) = cell2mat(realCMR(i,1).realCMRG) * 6;
+    else
+        realCMRS(i) = cell2mat(realCMR(i,1).realCMRG);
+    end
+end
+
+realCMRL = realCMRL';
+realCMRS = realCMRS';
+
+percRiskCFRS.percRiskCFRS(percRiskCFRS.percRiskCFRS >100) = NaN;
+percRiskCFRL.percRiskCFRL(percRiskCFRL.percRiskCFRL >100) = NaN;
+percRiskCFRO.percRiskCFRO(percRiskCFRO.percRiskCFRO >100) = NaN;
+
+
+for i =1:height(realCMR)
+    discCMRS(i) = percRiskCFRS(i,1).percRiskCFRS- realCMRS(i);
+    discCMRL(i) =  percRiskCFRL(i,1).percRiskCFRL -realCMRL(i);
+    discCMRG(i) = percRiskCFRO(i,1).percRiskCFRO - cell2mat(realCMR(i,1).realCMRG);    
+end
+
+discCMRG = table(discCMRG', 'VariableNames', {'discCMRG'});
+discCMRL = table(discCMRL', 'VariableNames', {'discCMRL'});
+discCMRS = table(discCMRS', 'VariableNames', {'discCMRS'});
+
+
+ed = prelimRes.ed_WhatIsYourHighestLevelOfEducation_;
+percInf = prelimRes.ownExpert_SQ001__InYourView_RelativeToTheAverage_HowDoYouEstima;
+percEd = prelimRes.ownExpert_SQ002__InYourView_RelativeToTheAverage_HowDoYouEstima;
+percIntel = prelimRes.ownExpert_SQ003__InYourView_RelativeToTheAverage_HowDoYouEstima;
+
+map = {'Elementary school','Middle school','Completed secondary school','Completed college/university', 'Masters'' degree', 'Completed college/university','PhD/MD/JD, advanced degree' };
+
+for i = 1:length(ed)
+    if strcmp(ed(i), map(1))
+        Ed(i) = 1
+    elseif strcmp(ed(i), map(2))
+        Ed(i) = 2
+    elseif strcmp(ed(i), map(3))
+        Ed(i) = 3
+    elseif strcmp(ed(i), map(4))
+        Ed(i) = 4
+    elseif strcmp(ed(i), map(5))
+        Ed(i) = 5
+    elseif strcmp(ed(i), map(6))
+        Ed(i) = 6
+    elseif strcmp(ed(i), map(7))
+        Ed(i) = 7
+    end
+end
+
+map2 = {'Well below average', 'Below average', 'Average', 'Above average', 'Well above average'};
+
+percKnow = [percInf percEd percIntel];
+percKnowd = zeros([size(percKnow,1), size(percKnow, 2)]);
+
+for i = 1:numel(percKnow)
+    if strcmp(percKnow(i), map2(1))
+        percKnowd(i) = 1
+    elseif strcmp(percKnow(i), map2(2))
+        percKnowd(i) = 2
+    elseif strcmp(percKnow(i), map2(3))
+        percKnowd(i) = 3
+    elseif strcmp(percKnow(i), map2(4))
+        percKnowd(i) = 4
+    elseif strcmp(percKnow(i), map2(5))
+        percKnowd(i) = 5
+    end
+end
+
+percKnowd1 = table(percKnowd(:,1), 'VariableNames', {'percInf'});
+percKnowd2 = table(percKnowd(:,2), 'VariableNames', {'percEd'});
+percKnowd3 = table(percKnowd(:,3), 'VariableNames', {'percIntel'});
+
+Age = table(prelimRes.Age_HowOldAreYou_, 'VariableNames', {'Age'});
+
+Ed = table(Ed', 'VariableNames', {'Ed'});
+
+otherVar = [dutyVar trustVar persLoss compliance discCMRG discCMRL discCMRS Age Ed percKnowd1 percKnowd2 percKnowd3];
+
+
+
 
 for i=1:size(prelimRes,2)
 if strfind(char(prelimRes.Properties.VariableNames(i)),'YouHaveA')
